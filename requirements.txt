@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+pandas
+numpy
+scikit-learn
+mlflow
+joblib
+fairlearn
+pyyaml
+python-multipart
+xgboost
+matplotlib
+scipy
+governance

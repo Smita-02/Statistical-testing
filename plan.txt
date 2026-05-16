@@ -1,0 +1,15 @@
+ai-governance-system/
+│
+├── app/
+│   ├── main.py
+│   ├── upload.py
+│   ├── inspector.py
+│   ├── metrics.py
+│   ├── fairness.py
+│   ├── reports.py
+│   └── utils.py
+│
+├── uploaded_models/
+├── governance_reports/
+├── requirements.txt
+└── Dockerfile
