@@ -1,3 +1,5 @@
+# app/reports.py
+
 import datetime
 import json
 import os
@@ -5,179 +7,486 @@ import os
 import pandas as pd
 
 from app.fairness import run_multi_fairness_analysis
-from app.inspector import find_model_files, inspect_model, parse_mlmodel
-from app.metrics import generate_predictions, run_all_metrics
-from app.utils import load_model
+from app.inspector import (
+    find_model_files,
+    inspect_model,
+    parse_mlmodel
+)
 
+from app.metrics import (
+    generate_predictions,
+    run_all_metrics
+)
+
+from app.utils import (
+    load_model
+)
 
 REPORT_DIR = "governance_reports"
-os.makedirs(REPORT_DIR, exist_ok=True)
+
+os.makedirs(
+    REPORT_DIR,
+    exist_ok=True
+)
 
 
 def current_timestamp():
-    return datetime.datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
+
+    return datetime.datetime.utcnow().strftime(
+        "%Y-%m-%d_%H-%M-%S"
+    )
 
 
-def save_json_report(report_data, filename):
-    output_path = os.path.join(REPORT_DIR, filename)
+def save_json_report(
+    report_data,
+    filename
+):
 
-    with open(output_path, "w", encoding="utf-8") as handle:
-        json.dump(report_data, handle, indent=4, default=str)
+    output_path = os.path.join(
+        REPORT_DIR,
+        filename
+    )
+
+    with open(
+        output_path,
+        "w",
+        encoding="utf-8"
+    ) as handle:
+
+        json.dump(
+            report_data,
+            handle,
+            indent=4,
+            default=str
+        )
 
     return output_path
 
 
-def generate_governance_summary(deterministic_metrics, fairness_metrics):
-    task_type = deterministic_metrics.get("task_type", "unknown")
+def generate_governance_summary(
+    deterministic_metrics,
+    fairness_metrics
+):
+
     summary = {
-        "overall_status": "PASSED",
-        "risk_level": "LOW",
-        "violations": [],
-        "fairness_status": "PASSED",
-        "task_type": task_type,
+        "overall_status": "FAILED",
+        "risk_level": "HIGH",
+        "passed_checks": [],
+        "failed_checks": []
     }
 
-    if task_type in {"binary_classification", "multiclass_classification", "classification"}:
-        confusion_metrics = deterministic_metrics["confusion_metrics"]
-        accuracy = confusion_metrics.get("accuracy")
+    passed_any_metric = False
 
-        if accuracy is not None and accuracy < 0.70:
-            summary["overall_status"] = "FAILED"
-            summary["risk_level"] = "HIGH"
-            summary["violations"].append("Model accuracy below threshold")
+    # ---------------------------------------------------
+    # CONFUSION METRICS CHECK
+    # ---------------------------------------------------
 
-        true_positive = confusion_metrics.get("true_positive")
-        false_negative = confusion_metrics.get("false_negative")
+    confusion_metrics = deterministic_metrics.get(
+        "confusion_metrics",
+        {}
+    )
 
-        if (
-            true_positive is not None
-            and false_negative is not None
-            and true_positive == 0
-            and false_negative > 0
-        ):
-            summary["overall_status"] = "FAILED"
-            summary["risk_level"] = "HIGH"
-            summary["violations"].append("Model failed to identify any positive cases")
+    accuracy = confusion_metrics.get("accuracy")
 
-    elif task_type == "regression":
-        regression_metrics = deterministic_metrics.get("regression_metrics", {})
-        r2_score = regression_metrics.get("r2_score")
+    if accuracy is not None:
 
-        if r2_score is not None and r2_score < 0.50:
-            summary["overall_status"] = "FAILED"
-            summary["risk_level"] = "HIGH"
-            summary["violations"].append("Regression R2 score below threshold")
+        passed_any_metric = True
 
-    fairness_failures = 0
-    fairness_evaluated = 0
+        summary["passed_checks"].append(
+            "Confusion metrics calculated"
+        )
 
-    for feature, report in fairness_metrics.items():
-        fairness_status = report["policy_evaluation"]["overall_fairness_status"]
+    else:
 
-        if fairness_status in {"PASSED", "FAILED"}:
-            fairness_evaluated += 1
+        summary["failed_checks"].append(
+            "Confusion metrics unavailable"
+        )
 
-        if fairness_status == "FAILED":
-            fairness_failures += 1
-            summary["violations"].append(f"Fairness violation in {feature}")
+    # ---------------------------------------------------
+    # FAIRNESS METRICS CHECK
+    # ---------------------------------------------------
 
-    if fairness_failures > 0:
-        summary["fairness_status"] = "FAILED"
-    elif fairness_evaluated == 0:
-        summary["fairness_status"] = "NOT_EVALUATED"
+    for feature_name, metrics in fairness_metrics.items():
 
-    if fairness_failures >= 2:
-        summary["risk_level"] = "HIGH"
-        summary["overall_status"] = "FAILED"
-    elif fairness_failures == 1 and summary["risk_level"] == "LOW":
-        summary["risk_level"] = "MEDIUM"
+        demographic_parity = metrics.get(
+            "demographic_parity",
+            {}
+        )
 
-    if summary["fairness_status"] == "PASSED":
+        dir_value = demographic_parity.get(
+            "disparate_impact_ratio"
+        )
+
+        dpd_value = demographic_parity.get(
+            "demographic_parity_difference"
+        )
+
+        # DIR
+        if dir_value is not None:
+
+            passed_any_metric = True
+
+            summary["passed_checks"].append(
+                f"{feature_name} DIR calculated"
+            )
+
+        else:
+
+            summary["failed_checks"].append(
+                f"{feature_name} DIR unavailable"
+            )
+
+        # DPD
+        if dpd_value is not None:
+
+            passed_any_metric = True
+
+            summary["passed_checks"].append(
+                f"{feature_name} DPD calculated"
+            )
+
+        else:
+
+            summary["failed_checks"].append(
+                f"{feature_name} DPD unavailable"
+            )
+
+    # ---------------------------------------------------
+    # FINAL STATUS
+    # ---------------------------------------------------
+
+    if passed_any_metric:
+
         summary["overall_status"] = "PASSED"
+        summary["risk_level"] = "LOW"
+
+    else:
+
+        summary["overall_status"] = "FAILED"
+        summary["risk_level"] = "HIGH"
 
     return summary
 
 
-def build_governance_report(model_path, dataset_path, target_column, sensitive_columns):
-    artifacts = find_model_files(model_path)
-    metadata = parse_mlmodel(artifacts["mlmodel"])
-    loaded = load_model(artifacts)
-    model = loaded["model"]     
-    inspection_report = inspect_model(model, metadata)
+def build_governance_report(
+    model_path,
+    dataset_path,
+    target_column,
+    sensitive_columns
+):
 
-    if not os.path.exists(dataset_path):
-        raise FileNotFoundError(f"Dataset not found: {dataset_path}")
-
-    df = pd.read_csv(dataset_path)
-    deterministic_metrics = run_all_metrics(model=model, df=df, target_column=target_column)
-    prediction_results = generate_predictions(model=model, df=df, target_column=target_column)
-    fairness_metrics = run_multi_fairness_analysis(
-        df=df,
-        y_true=prediction_results["y_true"],
-        y_pred=prediction_results["y_pred"],
-        sensitive_columns=sensitive_columns,
-        task_type=prediction_results["task_type"],
+    artifacts = find_model_files(
+        model_path
     )
-    governance_summary = generate_governance_summary(deterministic_metrics, fairness_metrics)
 
-    inspection_report["loaded_model_format"] = loaded["model_format"]
-    inspection_report["loaded_model_path"] = loaded["model_path"]
-    inspection_report["evaluated_task_type"] = prediction_results["task_type"]
+    metadata = parse_mlmodel(
+        artifacts["mlmodel"]
+    )
+
+    loaded = load_model(
+        artifacts
+    )
+
+    model = loaded["model"]
+
+    inspection_report = inspect_model(
+        model,
+        metadata
+    )
+
+    if not os.path.exists(
+        dataset_path
+    ):
+
+        raise FileNotFoundError(
+            f"Dataset not found: {dataset_path}"
+        )
+
+    df = pd.read_csv(
+        dataset_path
+    )
+
+    deterministic_metrics = (
+        run_all_metrics(
+
+            model=model,
+
+            df=df,
+
+            target_column=
+                target_column
+        )
+    )
+
+    prediction_results = (
+        generate_predictions(
+
+            model=model,
+
+            df=df,
+
+            target_column=
+                target_column
+        )
+    )
+
+    fairness_metrics = (
+        run_multi_fairness_analysis(
+
+            df=df,
+
+            y_true=
+                prediction_results["y_true"],
+
+            y_pred=
+                prediction_results["y_pred"],
+
+            sensitive_columns=
+                sensitive_columns
+        )
+    )
+
+    governance_summary = (
+        generate_governance_summary(
+
+            deterministic_metrics,
+
+            fairness_metrics
+        )
+    )
+
+    inspection_report[
+        "loaded_model_format"
+    ] = loaded[
+        "model_format"
+    ]
+
+    inspection_report[
+        "loaded_model_path"
+    ] = loaded[
+        "model_path"
+    ]
+
+    inspection_report[
+        "evaluated_task_type"
+    ] = prediction_results[
+        "task_type"
+    ]
 
     return {
+
         "report_metadata": {
-            "generated_at": current_timestamp(),
-            "model_path": model_path,
-            "dataset_path": dataset_path,
+
+            "generated_at":
+                current_timestamp(),
+
+            "model_path":
+                model_path,
+
+            "dataset_path":
+                dataset_path
         },
-        "artifacts": artifacts,
-        "model_metadata": metadata,
-        "model_inspection": inspection_report,
-        "deterministic_metrics": deterministic_metrics,
-        "fairness_metrics": fairness_metrics,
-        "governance_summary": governance_summary,
+
+        "artifacts":
+            artifacts,
+
+        "model_metadata":
+            metadata,
+
+        "model_inspection":
+            inspection_report,
+
+        "deterministic_metrics":
+            deterministic_metrics,
+
+        "fairness_metrics":
+            fairness_metrics,
+
+        "governance_summary":
+            governance_summary
     }
 
 
-def generate_and_save_report(model_path, dataset_path, target_column, sensitive_columns):
+def generate_and_save_report(
+    model_path,
+    dataset_path,
+    target_column,
+    sensitive_columns
+):
+
     report = build_governance_report(
+
         model_path=model_path,
+
         dataset_path=dataset_path,
+
         target_column=target_column,
-        sensitive_columns=sensitive_columns,
+
+        sensitive_columns=sensitive_columns
     )
 
-    filename = f"governance_report_{current_timestamp()}.json"
-    saved_path = save_json_report(report, filename)
+    filename = (
+        f"governance_report_"
+        f"{current_timestamp()}.json"
+    )
 
-    return {"report_path": saved_path, "report": report}
+    saved_path = save_json_report(
+        report,
+        filename
+    )
 
+    return {
 
-def generate_executive_summary(report):
-    deterministic_metrics = report["deterministic_metrics"]
-    task_type = deterministic_metrics.get("task_type")
+        "report_path":
+            saved_path,
 
-    summary = {
-        "overall_status": report["governance_summary"]["overall_status"],
-        "risk_level": report["governance_summary"]["risk_level"],
-        "framework": report["model_inspection"]["framework"],
-        "model_type": report["model_inspection"]["model_type"],
-        "total_features": report["model_inspection"]["total_features"],
-        "task_type": task_type,
-        "fairness_checks": {},
+        "report":
+            report
     }
 
-    if task_type in {"binary_classification", "multiclass_classification", "classification"}:
-        summary["primary_metric"] = deterministic_metrics["confusion_metrics"].get("accuracy")
-        summary["primary_metric_name"] = "accuracy"
-    elif task_type == "regression":
-        summary["primary_metric"] = deterministic_metrics["regression_metrics"].get("r2_score")
-        summary["primary_metric_name"] = "r2_score"
 
-    for feature, metrics in report["fairness_metrics"].items():
-        summary["fairness_checks"][feature] = {
-            "status": metrics["policy_evaluation"]["overall_fairness_status"],
-            "disparate_impact_ratio": metrics["demographic_parity"]["disparate_impact_ratio"],
+def generate_executive_summary(
+    report
+):
+
+    deterministic_metrics = report.get(
+        "deterministic_metrics",
+        {}
+    )
+
+    task_type = deterministic_metrics.get(
+        "task_type"
+    )
+
+    summary = {
+
+        "overall_status":
+            report.get(
+                "governance_summary",
+                {}
+            ).get(
+                "overall_status"
+            ),
+
+        "risk_level":
+            report.get(
+                "governance_summary",
+                {}
+            ).get(
+                "risk_level"
+            ),
+
+        "framework":
+            report.get(
+                "model_inspection",
+                {}
+            ).get(
+                "framework"
+            ),
+
+        "model_type":
+            report.get(
+                "model_inspection",
+                {}
+            ).get(
+                "model_type"
+            ),
+
+        "total_features":
+            report.get(
+                "model_inspection",
+                {}
+            ).get(
+                "total_features"
+            ),
+
+        "task_type":
+            task_type,
+
+        "fairness_checks":
+            {}
+    }
+
+    # -----------------------------------
+    # PRIMARY METRIC
+    # -----------------------------------
+
+    if task_type in {
+
+        "binary_classification",
+        "multiclass_classification",
+        "classification"
+    }:
+
+        summary["primary_metric"] = (
+            deterministic_metrics.get(
+                "confusion_metrics",
+                {}
+            ).get(
+                "accuracy"
+            )
+        )
+
+        summary["primary_metric_name"] = (
+            "accuracy"
+        )
+
+    elif task_type == "regression":
+
+        summary["primary_metric"] = (
+            deterministic_metrics.get(
+                "regression_metrics",
+                {}
+            ).get(
+                "r2_score"
+            )
+        )
+
+        summary["primary_metric_name"] = (
+            "r2_score"
+        )
+
+    # -----------------------------------
+    # FAIRNESS CHECKS
+    # -----------------------------------
+
+    for feature, metrics in report.get(
+        "fairness_metrics",
+        {}
+    ).items():
+
+        policy = metrics.get(
+            "policy_evaluation",
+            {
+                "overall_fairness_status":
+                    "NOT_EVALUATED"
+            }
+        )
+
+        demographic_parity = metrics.get(
+            "demographic_parity",
+            {}
+        )
+
+        summary["fairness_checks"][
+            feature
+        ] = {
+
+            "status":
+                policy.get(
+                    "overall_fairness_status",
+                    "NOT_EVALUATED"
+                ),
+
+            "disparate_impact_ratio":
+                demographic_parity.get(
+                    "disparate_impact_ratio"
+                ),
+
+            "demographic_parity_difference":
+                demographic_parity.get(
+                    "demographic_parity_difference"
+                )
         }
 
     return summary

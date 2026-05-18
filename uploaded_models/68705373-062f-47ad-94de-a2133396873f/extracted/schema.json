@@ -1,0 +1,25 @@
+{
+  "inputs": [
+    {
+      "name": "Gender",
+      "type": "int"
+    },
+    {
+      "name": "ApplicantIncome",
+      "type": "int"
+    },
+    {
+      "name": "LoanAmount",
+      "type": "int"
+    },
+    {
+      "name": "Credit_History",
+      "type": "int"
+    }
+  ],
+  "outputs": [
+    {
+      "type": "int"
+    }
+  ]
+}

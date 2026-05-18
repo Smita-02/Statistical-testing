@@ -1,0 +1,11 @@
+COLUMNS:
+ trans_date_trans_time: object 
+ category: object 
+ amt: float64
+ gender: object 
+ city_pop: int64  
+ dob: object 
+ fraud: int64
+ 
+TARGET_COLUMN: 
+ name: fraud 
