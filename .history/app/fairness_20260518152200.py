@@ -30,34 +30,7 @@ def safe_metric_value(value):
     except:
         return None
 
-def fairness_explanation(metric_name, value):
 
-    if value is None:
-        return "Fairness metric could not be computed."
-
-    explanations = {
-
-        "dir":
-            (
-                f"Disparate Impact Ratio is "
-                f"{value}. "
-                f"Values below 0.80 may "
-                f"indicate bias."
-            ),
-
-        "dpd":
-            (
-                f"Demographic Parity Difference "
-                f"is {value}. "
-                f"Higher values indicate "
-                f"greater difference between groups."
-            )
-    }
-
-    return explanations.get(
-        metric_name,
-        ""
-    )
 # ---------------------------------------------------
 # VALIDATE SENSITIVE FEATURE
 # ---------------------------------------------------
@@ -209,38 +182,12 @@ def calculate_demographic_parity(
 
     return {
 
-    "dpd": {
+        "demographic_parity_difference":
+            safe_metric_value(dpd),
 
-        "value":
-            safe_metric_value(
-                demographic_parity_difference
-            ),
-
-        "explanation":
-            fairness_explanation(
-                "dpd",
-                safe_metric_value(
-                    demographic_parity_difference
-                )
-            )
-    },
-
-    "dir": {
-
-        "value":
-            safe_metric_value(
-                demographic_parity_ratio
-            ),
-
-        "explanation":
-            fairness_explanation(
-                "dir",
-                safe_metric_value(
-                    demographic_parity_ratio
-                )
-            )
+        "disparate_impact_ratio":
+            safe_metric_value(dir_ratio)
     }
-}
 
 
 # ---------------------------------------------------
@@ -256,11 +203,13 @@ def evaluate_fairness_thresholds(
     overall_status = "PASSED"
 
     dpd = parity_metrics.get(
-        "demographic_parity_difference"
+        "demographic_parity_difference",
+        "explanation": fairness_explanation("dpd", dpd_value)
     )
 
     dir_ratio = parity_metrics.get(
-        "disparate_impact_ratio"
+        "disparate_impact_ratio",
+        "explanation": fairness_explanation("dir", dir_value)
     )
 
     # DIR Check
@@ -434,3 +383,23 @@ def run_multi_fairness_analysis(
             }
 
     return results
+
+def fairness_explanation(metric_name, value):
+    if value is None:
+        return "Fairness metric could not be evaluated."
+
+    explanations = {
+        "dir":
+            (
+                f"Disparate Impact Ratio is {value}. "
+                "Values below 0.80 may indicate bias."
+            ),
+
+        "dpd":
+            (
+                f"Demographic Parity Difference is {value}. "
+                "Higher differences indicate unequal treatment between groups."
+            )
+    }
+
+    return explanations.get(metric_name, "")

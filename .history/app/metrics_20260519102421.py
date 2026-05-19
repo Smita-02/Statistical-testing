@@ -515,30 +515,11 @@ def calculate_confusion_metrics(y_true, y_pred):
     )
 
     result = {
-        "accuracy": {
-            "value":
-                safe_float(
-                 accuracy_score(
-                     y_true,
-                     y_pred
-            )
+        "accuracy": safe_float(
+            accuracy_score(y_true, y_pred)
         ),
 
-            "explanation":
-                metric_explanation(
-                  "accuracy",
-                   safe_float(
-                      accuracy_score(
-                       y_true,
-                       y_pred
-                )  
-            )
-        )
-},
-
-        "precision": {
-    "value":
-        safe_float(
+        "precision": safe_float(
             precision_score(
                 y_true,
                 y_pred,
@@ -547,23 +528,7 @@ def calculate_confusion_metrics(y_true, y_pred):
             )
         ),
 
-    "explanation":
-        metric_explanation(
-            "precision",
-            safe_float(
-                precision_score(
-                    y_true,
-                    y_pred,
-                    average="weighted",
-                    zero_division=0
-                )
-            )
-        )
-},
-
-        "recall": {
-    "value":
-        safe_float(
+        "recall": safe_float(
             recall_score(
                 y_true,
                 y_pred,
@@ -572,23 +537,7 @@ def calculate_confusion_metrics(y_true, y_pred):
             )
         ),
 
-    "explanation":
-        metric_explanation(
-            "recall",
-            safe_float(
-                recall_score(
-                    y_true,
-                    y_pred,
-                    average="weighted",
-                    zero_division=0
-                )
-            )
-        )
-},
-
-        "f1_score": {
-    "value":
-        safe_float(
+        "f1_score": safe_float(
             f1_score(
                 y_true,
                 y_pred,
@@ -596,20 +545,6 @@ def calculate_confusion_metrics(y_true, y_pred):
                 zero_division=0
             )
         ),
-
-    "explanation":
-        metric_explanation(
-            "f1_score",
-            safe_float(
-                f1_score(
-                    y_true,
-                    y_pred,
-                    average="weighted",
-                    zero_division=0
-                )
-            )
-        )
-},
 
         "balanced_accuracy": safe_float(
             balanced_accuracy_score(
@@ -641,63 +576,21 @@ def calculate_confusion_metrics(y_true, y_pred):
 
         tn, fp, fn, tp = cm.ravel()
 
-        result["true_positive"] = {
-            "value" : int(tp),
-            "explanation":
-                (
-                    f"{int(tp)} positive cases"
-                    f"were correctly identified "
-                    f"by the model."
-                )
-        }
-        result["true_negative"] = {
-            "value" : int(tn),
-             "explanation":
-                (
-                    f"{int(tn)} negative cases"
-                    f" were correctly identified "
-                    f" by the model."
-                )
-        }
-        result["false_positive"] = {
-            "value" : int(fp),
-            "explanation":
-            (
-                f"{int(fp)} negative cases"
-                f"were incorrectly predicted"
-                f"as positive."
-            )
-        }
-        result["false_negative"] = {
-            "value": int(fn),
-            "expalanation":
-             (
-                 f"{int(fn)} positive cases"
-                 f" were missed by the model."
-             )
-        }
+        result["true_positive"] = int(tp)
+        result["true_negative"] = int(tn)
+        result["false_positive"] = int(fp)
+        result["false_negative"] = int(fn)
+
     else:
 
-        result["true_positive"] = {
-             "value": None,
-             "explanation":  "True Positive is only available for binary classification."
-        } 
-        result["true_negative"] = {
-            "value": None,
-            "explanation":
-        "True Negative is only available for binary classification."
-        }
-        result["false_positive"] = {
-            "value":None,
-            "explanation":
-              "False Positive is only available for binary classification."
-        }
-        result["false_negative"] = {
-            "value": None,
-            "explanation": "False Negative is only available for binary classification."
-        } 
+        result["true_positive"] = None
+        result["true_negative"] = None
+        result["false_positive"] = None
+        result["false_negative"] = None
 
     return result
+
+
 # =========================================================
 # AUC
 # =========================================================

@@ -646,8 +646,8 @@ def calculate_confusion_metrics(y_true, y_pred):
             "explanation":
                 (
                     f"{int(tp)} positive cases"
-                    f"were correctly identified "
-                    f"by the model."
+                    f" were correctly identified"
+                    f" by the model."
                 )
         }
         result["true_negative"] = {
@@ -655,7 +655,7 @@ def calculate_confusion_metrics(y_true, y_pred):
              "explanation":
                 (
                     f"{int(tn)} negative cases"
-                    f" were correctly identified "
+                    f" were correctly identified"
                     f" by the model."
                 )
         }
@@ -664,8 +664,8 @@ def calculate_confusion_metrics(y_true, y_pred):
             "explanation":
             (
                 f"{int(fp)} negative cases"
-                f"were incorrectly predicted"
-                f"as positive."
+                f" were incorrectly predicted"
+                f" as positive."
             )
         }
         result["false_negative"] = {
